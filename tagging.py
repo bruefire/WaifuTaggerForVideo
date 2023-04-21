@@ -2,14 +2,18 @@ import argparse
 import csv
 import glob
 import os
+import shutil
 
 from PIL import Image
 import cv2
 from tqdm import tqdm
 import numpy as np
+import tensorflow
 from tensorflow.keras.models import load_model
 from huggingface_hub import hf_hub_download
 import torch
+import ffmpeg
+import datetime
 
 
 # from wd14 tagger
@@ -22,6 +26,7 @@ SUB_DIR = "variables"
 SUB_DIR_FILES = ["variables.data-00000-of-00001", "variables.index"]
 CSV_FILE = FILES[-1]
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
+VIDEO_EXTENSIONS = [".mp4"]
 
 
 def glob_images(directory, base="*"):
@@ -34,6 +39,70 @@ def glob_images(directory, base="*"):
   # img_paths = list(set(img_paths))                    # 重複を排除
   # img_paths.sort()
   return img_paths
+
+def glob_videos(directory, clip_num, base="*"):
+  vid_paths = []
+  clip_paths = []
+  for ext in VIDEO_EXTENSIONS:
+    if base == '*':
+      vid_paths.extend(glob.glob(os.path.join(glob.escape(directory), base + ext)))
+    else:
+      vid_paths.extend(glob.glob(glob.escape(os.path.join(directory, base + ext))))
+      
+  # クリップを生成
+  for vid_path in vid_paths:
+    probe = ffmpeg.probe(vid_path)
+    video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
+    num_frames = int(video_info['nb_frames'])
+
+    # クリップ用フォルダ作成
+    clip_dir_name = os.path.splitext(os.path.basename(vid_path))[0]
+    input_clip_dir = os.path.join(os.path.dirname(vid_path), clip_dir_name)
+    if os.path.exists(input_clip_dir):
+      shutil.rmtree(input_clip_dir)
+    os.makedirs(input_clip_dir)
+
+    # 指定枚数だけ抜き出して一時保存
+    video = ffmpeg.input(vid_path)
+    for frame in range(clip_num):
+      frame_num = max(int((num_frames / clip_num) * frame), clip_num - 1)
+      output_path = os.path.join(input_clip_dir, str(frame_num) + '.png')
+      clip_image = ffmpeg.output(video, output_path, vf='select=eq(n\,'+ str(frame_num) +')', vframes=1)
+      ffmpeg.run(clip_image, quiet=True, overwrite_output=True)
+
+      clip_paths.append(output_path)
+
+  return vid_paths, clip_paths
+
+def integrate_video_tags(video_paths):
+  for video_path in video_paths:
+    target_dir = os.path.splitext(video_path)[0]
+    # フォルダ内のテキストファイルをリストで取得
+    txt_files = [f for f in os.listdir(target_dir) if f.endswith('.txt')]
+    # ファイル内容を抽出し、1つのリストにまとめる
+    lines = []
+    for file in txt_files:
+        with open(os.path.join(target_dir, file), 'r') as f:
+            lines += [line.strip() for line in f.readlines()]
+    # 改行を","に変換
+    lines_t = []
+    for line in lines:
+      lines_t.extend(line.split(','))
+    lines = lines_t
+    # 行頭行末の空白をトリム
+    lines = [line.strip() for line in lines]
+    # 行をソートし、重複行を削除
+    lines = set(lines)
+    # 各行を","で連結して1つの行にする
+    result = ', '.join(lines)
+    # ファイル出力
+    print(target_dir)
+    with open(target_dir + '.txt', 'w') as f:
+        f.write(result)
+    # クリップフォルダ削除
+    if os.path.exists(target_dir):
+      shutil.rmtree(target_dir)
+    
 
 def preprocess_image(image):
   image = np.array(image)
@@ -103,8 +172,15 @@ def main(args):
   image_paths = glob_images(args.train_data_dir)
   print(f"found {len(image_paths)} images.")
 
+  # 動画を読み込む
+  video_paths, clip_paths = glob_videos(args.train_data_dir, args.clip_num)
+  image_paths.extend(clip_paths)
+  print(f"found {len(video_paths)} videos.")
+  print(f"clipped: {len(clip_paths)} images.")
+
   print("loading model and labels")
   model = load_model(args.model_dir)
+  print("Num GPUs Available: ", len(tensorflow.config.list_physical_devices('GPU')))
 
   # label_names = pd.read_csv("2022_0000_0899_6549/selected_tags.csv")
   # 依存ライブラリを増やしたくないので自力で読むよ
@@ -181,6 +257,9 @@ def main(args):
   if len(b_imgs) > 0:
     run_batch(b_imgs)
 
+  # 各動画クリップの推論結果をまとめる
+  integrate_video_tags(video_paths)
+
   print("done!")
 
 
@@ -201,6 +280,7 @@ if __name__ == '__main__':
                       help="extension of caption file (for backward compatibility) / 出力されるキャプションファイルの拡張子（スペルミスしていたのを残してあります）")
   parser.add_argument("--caption_extension", type=str, default=".txt", help="extension of caption file / 出力されるキャプションファイルの拡張子")
   parser.add_argument("--debug", action="store_true", help="debug mode")
+  parser.add_argument("--clip_num", type=int, default=3, help="number of clipping video")
 
   args = parser.parse_args()
 
