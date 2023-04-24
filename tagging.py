@@ -29,6 +29,62 @@ IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
 VIDEO_EXTENSIONS = [".mp4"]
 
 
+class VideoInfoJson():
+
+  def __init__(self, out_path, name="My Videos"):
+    self.out_path = out_path
+    self.name = name
+    self.data = {}
+    
+  def __len__(self):
+    return len(self.data)
+    
+  def __getitem__(self, key):
+    img_path = self.data[key]
+    
+  def add_video(self, video_path, num_frames):
+    self.data[video_path] = {}
+    self.data[video_path]["num_frames"] = str(num_frames)
+    self.data[video_path]["data"] = []
+    
+  def add_video_content(self, video_path, frame_index, taginfo):
+    new_content = {}
+    new_content["frame_index"] = str(frame_index)
+    new_content["prompt"] = taginfo.strip()
+    if video_path in self.data:
+        self.data[video_path]["data"].append(new_content)
+        
+  def make(self):
+    with open(self.out_path, 'w') as f:
+      result = '''
+{
+    "name": "''' + self.name + '''",
+    "data": ['''
+      for vpath, info in self.data.items():
+        result += '''
+        {
+            "video_path": "''' + vpath + '''",
+            "num_frames": ''' + info["num_frames"] + ''',
+            "data": ['''
+        for content in info["data"]:
+          result += '''
+                {
+                    "frame_index": ''' + content["frame_index"] + ''',
+                    "prompt": "''' + content["prompt"] + '''"
+                },'''
+        result = result[:-1]
+        result += '''
+            ]
+        },'''
+      result = result[:-1]
+      result += '''
+    ]
+}
+'''
+      
+      f.write(result)
+    
+
 def glob_images(directory, base="*"):
   img_paths = []
   for ext in IMAGE_EXTENSIONS:
@@ -40,7 +96,8 @@ def glob_images(directory, base="*"):
   # img_paths.sort()
   return img_paths
 
-def glob_videos(directory, clip_num, base="*"):
+def glob_videos(directory, clip_num, json_obj, base="*"):
+  print("making video clips..")
   vid_paths = []
   clip_paths = []
   for ext in VIDEO_EXTENSIONS:
@@ -71,37 +128,54 @@ def glob_videos(directory, clip_num, base="*"):
       ffmpeg.run(clip_image, quiet=True, overwrite_output=True)
 
       clip_paths.append(output_path)
+      
+    #json作成の場合 対象ビデオ要素作成
+    if json_obj is not None:
+      json_obj.add_video(vid_path, num_frames)
 
   return vid_paths, clip_paths
 
-def integrate_video_tags(video_paths):
+def integrate_video_tags(video_paths, json_obj):
   for video_path in video_paths:
     target_dir = os.path.splitext(video_path)[0]
     # フォルダ内のテキストファイルをリストで取得
     txt_files = [f for f in os.listdir(target_dir) if f.endswith('.txt')]
-    # ファイル内容を抽出し、1つのリストにまとめる
-    lines = []
-    for file in txt_files:
-        with open(os.path.join(target_dir, file), 'r') as f:
-            lines += [line.strip() for line in f.readlines()]
-    # 改行を","に変換
-    lines_t = []
-    for line in lines:
-      lines_t.extend(line.split(','))
-    lines = lines_t
-    # 行頭行末の空白をトリム
-    lines = [line.strip() for line in lines]
-    # 行をソートし、重複行を削除
-    lines = set(lines)
-    # 各行を","で連結して1つの行にする
-    result = ', '.join(lines)
-    # ファイル出力
-    print(target_dir)
-    with open(target_dir + '.txt', 'w') as f:
-        f.write(result)
+    
+    if json_obj is None:
+      # ファイル内容を抽出し、1つのリストにまとめる
+      lines = []
+      for file in txt_files:
+          with open(os.path.join(target_dir, file), 'r') as f:
+              lines += [line.strip() for line in f.readlines()]
+      # 改行を","に変換
+      lines_t = []
+      for line in lines:
+        lines_t.extend(line.split(','))
+      lines = lines_t
+      # 行頭行末の空白をトリム
+      lines = [line.strip() for line in lines]
+      # 行をソートし、重複行を削除
+      lines = set(lines)
+      # 各行を","で連結して1つの行にする
+      result = ', '.join(lines)
+      # ファイル出力
+      print(target_dir)
+      with open(target_dir + '.txt', 'w') as f:
+          f.write(result)
+    else:
+      # 各フレーム内容を追加
+      for file in txt_files:
+          with open(os.path.join(target_dir, file), 'r') as f:
+            frame_index = os.path.splitext(os.path.basename(file))[0]
+            taginfo = f.readlines()[0]
+            json_obj.add_video_content(video_path, frame_index, taginfo)
+      
     # クリップフォルダ削除
     if os.path.exists(target_dir):
       shutil.rmtree(target_dir)
+      
+  if json_obj is not None:
+    json_obj.make()
     
 
 def preprocess_image(image):
@@ -173,10 +247,15 @@ def main(args):
   print(f"found {len(image_paths)} images.")
 
   # 動画を読み込む
-  video_paths, clip_paths = glob_videos(args.train_data_dir, args.clip_num)
+  json_obj = None
+  if args.json:
+    json_obj = VideoInfoJson(args.json)
+    print("make a video json file.")
+  
+  video_paths, clip_paths = glob_videos(args.train_data_dir, args.clip_num, json_obj)
   image_paths.extend(clip_paths)
   print(f"found {len(video_paths)} videos.")
-  print(f"clipped: {len(clip_paths)} images.")
+  print(f"{len(clip_paths)} images clipped from videos.")
 
   print("loading model and labels")
   model = load_model(args.model_dir)
@@ -258,7 +337,7 @@ def main(args):
     run_batch(b_imgs)
 
   # 各動画クリップの推論結果をまとめる
-  integrate_video_tags(video_paths)
+  integrate_video_tags(video_paths, json_obj)
 
   print("done!")
 
@@ -281,6 +360,7 @@ if __name__ == '__main__':
   parser.add_argument("--caption_extension", type=str, default=".txt", help="extension of caption file / 出力されるキャプションファイルの拡張子")
   parser.add_argument("--debug", action="store_true", help="debug mode")
   parser.add_argument("--clip_num", type=int, default=3, help="number of clipping video")
+  parser.add_argument("--json", type=str, default="", help="make json file for t2v fine-tuning")
 
   args = parser.parse_args()
 
