@@ -55,15 +55,14 @@ class VideoInfoJson():
         self.data[video_path]["data"].append(new_content)
         
   def make(self):
-    with open(self.out_path, 'w') as f:
-      result = '''
-{
+    with open(self.out_path, 'w', encoding='utf-8') as f:
+      result = '''{
     "name": "''' + self.name + '''",
     "data": ['''
       for vpath, info in self.data.items():
         result += '''
         {
-            "video_path": "''' + vpath + '''",
+            "video_path": "''' + vpath.replace("\\", "\\\\") + '''",
             "num_frames": ''' + info["num_frames"] + ''',
             "data": ['''
         for content in info["data"]:
@@ -81,7 +80,6 @@ class VideoInfoJson():
     ]
 }
 '''
-      
       f.write(result)
     
 
@@ -122,7 +120,7 @@ def glob_videos(directory, clip_num, json_obj, base="*"):
     # 指定枚数だけ抜き出して一時保存
     video = ffmpeg.input(vid_path)
     for frame in range(clip_num):
-      frame_num = max(int((num_frames / clip_num) * frame), clip_num - 1)
+      frame_num = min(int((num_frames / clip_num) * frame), num_frames - 1)
       output_path = os.path.join(input_clip_dir, str(frame_num) + '.png')
       clip_image = ffmpeg.output(video, output_path, vf='select=eq(n\,'+ str(frame_num) +')', vframes=1)
       ffmpeg.run(clip_image, quiet=True, overwrite_output=True)
@@ -297,6 +295,7 @@ def main(args):
         tag_text = tag_text[2:]                   # 最初の ", " を消す
 
       with open(os.path.splitext(image_path)[0] + args.caption_extension, "wt", encoding='utf-8') as f:
+        tag_text = args.tags + ", " + tag_text if args.tags else tag_text   # マニュアルタグ
         f.write(tag_text + '\n')
         if args.debug:
           print(image_path, tag_text)
@@ -361,6 +360,7 @@ if __name__ == '__main__':
   parser.add_argument("--debug", action="store_true", help="debug mode")
   parser.add_argument("--clip_num", type=int, default=3, help="number of clipping video")
   parser.add_argument("--json", type=str, default="", help="make json file for t2v fine-tuning")
+  parser.add_argument("--tags", type=str, default="", help="add tags manually")
 
   args = parser.parse_args()
 
