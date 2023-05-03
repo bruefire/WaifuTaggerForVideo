@@ -1,6 +1,8 @@
 # WaifuTaggerForVideo
 This script performs batch tagging with [WD14Tagger](https://github.com/toriato/stable-diffusion-webui-wd14-tagger) for multiple videos, and outputs the results in either CSV or JSON.   
 The output result file(s) can be used with [Text-To-Video Finetuning](https://github.com/ExponentialML/Text-To-Video-Finetuning) for ModelScope.  
+  
+This script has been tested with Python 3.9.13 on Windows.  
 The core part of this script is based on the one of the scripts from [kohya-ss/sd-scripts](https://github.com/kohya-ss/sd-scripts).  
 I have just added the video generation part of the process.   
 
@@ -68,4 +70,4 @@ python tagging.py /path/to/video/directory/ --batch_size 20 --clip_num 8
 python tagging.py /path/to/video/directory/ --batch_size 20 --clip_num 8 --json result_file.json
 ```
 * "clip_num" specifies the maximum number of frames for tagging per video.  
-* If you encounter VRAM shortage, please decrease the value of "batch_size".  
+* If you encounter VRAM shortage, please decrease the value of "batch_size".   
