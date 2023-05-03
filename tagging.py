@@ -3,6 +3,7 @@ import csv
 import glob
 import os
 import shutil
+import json
 
 from PIL import Image
 import cv2
@@ -62,14 +63,14 @@ class VideoInfoJson():
       for vpath, info in self.data.items():
         result += '''
         {
-            "video_path": "''' + vpath.replace("\\", "\\\\") + '''",
+            "video_path": ''' + json.dumps(vpath) + ''',
             "num_frames": ''' + info["num_frames"] + ''',
             "data": ['''
         for content in info["data"]:
           result += '''
                 {
                     "frame_index": ''' + content["frame_index"] + ''',
-                    "prompt": "''' + content["prompt"] + '''"
+                    "prompt": ''' + json.dumps(content["prompt"]) + '''
                 },'''
         result = result[:-1]
         result += '''
@@ -94,18 +95,22 @@ def glob_images(directory, base="*"):
   # img_paths.sort()
   return img_paths
 
-def glob_videos(directory, clip_num, json_obj, base="*"):
-  print("making video clips..")
+def glob_videos(directory, base="*"):
   vid_paths = []
-  clip_paths = []
   for ext in VIDEO_EXTENSIONS:
     if base == '*':
       vid_paths.extend(glob.glob(os.path.join(glob.escape(directory), base + ext)))
     else:
       vid_paths.extend(glob.glob(glob.escape(os.path.join(directory, base + ext))))
       
+  return vid_paths
+  
+def clip_videos(vid_paths, clip_num, json_obj):
+  print("making video clips..")
+  clip_paths = []
+  
   # クリップを生成
-  for vid_path in vid_paths:
+  for vid_path in tqdm(vid_paths, smoothing=0.0):
     probe = ffmpeg.probe(vid_path)
     video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
     num_frames = int(video_info['nb_frames'])
@@ -130,8 +135,8 @@ def glob_videos(directory, clip_num, json_obj, base="*"):
     #json作成の場合 対象ビデオ要素作成
     if json_obj is not None:
       json_obj.add_video(vid_path, num_frames)
-
-  return vid_paths, clip_paths
+      
+  return clip_paths
 
 def integrate_video_tags(video_paths, json_obj):
   for video_path in video_paths:
@@ -250,9 +255,11 @@ def main(args):
     json_obj = VideoInfoJson(args.json)
     print("make a video json file.")
   
-  video_paths, clip_paths = glob_videos(args.train_data_dir, args.clip_num, json_obj)
-  image_paths.extend(clip_paths)
+  video_paths = glob_videos(args.train_data_dir)
   print(f"found {len(video_paths)} videos.")
+  
+  clip_paths = clip_videos(video_paths, args.clip_num, json_obj)
+  image_paths.extend(clip_paths)
   print(f"{len(clip_paths)} images clipped from videos.")
 
   print("loading model and labels")
