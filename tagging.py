@@ -260,7 +260,7 @@ def main(args):
   
   clip_paths = clip_videos(video_paths, args.clip_num, json_obj)
   image_paths.extend(clip_paths)
-  print(f"{len(clip_paths)} images clipped from videos.")
+  print(f"{len(clip_paths)} frames clipped from videos.")
 
   print("loading model and labels")
   model = load_model(args.model_dir)
