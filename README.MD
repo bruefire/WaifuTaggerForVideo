@@ -1,48 +1,28 @@
-# WDTaggerForVideo
-This script performs batch tagging with [WD14Tagger](https://github.com/toriato/stable-diffusion-webui-wd14-tagger) for multiple videos and outputs the results in either .txt files or a single json file.  
-Output .txt files or single .json file can be used on [Text-To-Video Finetuning](https://github.com/ExponentialML/Text-To-Video-Finetuning) for ModelScope.  
-The core part of this script is based on the one of scripts from [Kohya-ss/sd-scripts](https://github.com/kohya-ss/sd-scripts).  
+# WaifuTaggerForVideo
+This script performs batch tagging with [WD14Tagger](https://github.com/toriato/stable-diffusion-webui-wd14-tagger) for multiple videos, and outputs the results in either CSV or JSON.   
+The output result file(s) can be used with [Text-To-Video Finetuning](https://github.com/ExponentialML/Text-To-Video-Finetuning) for ModelScope.  
+The core part of this script is based on the one of the scripts from [kohya-ss/sd-scripts](https://github.com/kohya-ss/sd-scripts).  
 I have just added the video generation part of the process.   
 
-## Install
-```
-git clone https://github.com/bruefire/WaifuTaggerForVideo.git
-cd WaifuTaggerForVideo
-pip install -r requirements.txt
-pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
-```
-
-## Usage
-```
-# use .txt file format for getting result
-python tagging.py --batch_size 20 /path/to/your/video/directory/ --clip_num 8
-
-# use json format, and add manual tags
-python tagging.py --batch_size 20 /path/to/your/video/directory/ --clip_num 8 --json output_name.json --tags "additional, manual, tag"
-```
-"clip_num" specifies the maximum number of frames for tagging per video.  
-If you encounter VRAM shortage, please decrease the value of "batch_size".  
-jsonとして出力する場合は--jsonを指定します  
-
-## Output file(s) formats
-### .txt
-.txtファイルとして出力する場合は1つのファイルに対して1つのタグファイルが生成されます。  
-また、一つのファイルの中にクリップされたフレームすべてに対するタグが含まれています。  
-(タグの取捨選択方法は改善の余地があると思います)  
-以下のような内容が書き込まれているはずです。
+## Output formats
+### Single line CSV (.txt)
+When getting results with CSV files, one tag file is generated for each video file.  
+Also each file contains tags for all frames that have been clipped.  
+(There is room for improvement in the selection of which tags to keep)  
+The contents of the .txt file with the same name as the video file should be written as follows:
 ```
 1girl, solo, looking_at_viewer, bangs, blue_eyes, closed_mouth, blue_hair, long_hair, shirt, gloves, holding, ...
 ```
 
-### .json
-jsonファイルとして出力する場合は全体の結果をまとめた単一の.jsonが出力されます。  
-以下のような内容となっているはずです。  
+### JSON (.json)
+When outputting the results with JSON format, a single file containing the aggregated results will be generated.  
+The content should look like the following (on Windows):  
 ```
 {
     "name": "My Videos",
     "data": [
         {
-            "video_path": "E:\\userdata\\videos\\ai_trainning\\t2v-v2\\video1.mp4",
+            "video_path": "C:\\userdata\\videos\\ai_trainning\\t2v-v2\\video1.mp4",
             "num_frames": 73,
             "data": [
                 {
@@ -66,7 +46,26 @@ jsonファイルとして出力する場合は全体の結果をまとめた単�
 				...
             ]
         },
-		...
-	]
+        ...
+    ]
 }
 ```
+
+## Install
+```
+git clone https://github.com/bruefire/WaifuTaggerForVideo.git
+cd WaifuTaggerForVideo
+pip install -r requirements.txt
+pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
+```
+
+## Usage
+```
+# use single line CSV format for getting results
+python tagging.py /path/to/video/directory/ --batch_size 20 --clip_num 8
+
+# use JSON format
+python tagging.py /path/to/video/directory/ --batch_size 20 --clip_num 8 --json result_file.json
+```
+* "clip_num" specifies the maximum number of frames for tagging per video.  
+* If you encounter VRAM shortage, please decrease the value of "batch_size".  
