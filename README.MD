@@ -71,3 +71,4 @@ python tagging.py /path/to/video/directory/ --batch_size 20 --clip_num 8 --json 
 ```
 * "clip_num" specifies the maximum number of frames for tagging per video.  
 * If you encounter VRAM shortage, please decrease the value of "batch_size".   
+* If specific tags are required, please add the option as follows: "--tags 'manual-tag1, another-one'".  
